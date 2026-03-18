@@ -1,0 +1,115 @@
+import openpyxl
+import json
+import os
+import re
+import unicodedata
+
+
+def remover_acentos(texto):
+    """Padroniza o texto removendo acentos e deixando em maiúsculo."""
+    if not texto: return ""
+    return "".join(c for c in unicodedata.normalize('NFD', str(texto))
+                   if unicodedata.category(c) != 'Mn').upper()
+
+
+def formatar_frase(L):
+    # L[0]=Equipamento, L[1]=Código ET, L[4]=Tipo
+    pre = "Prev-A Manutenção " if L[4] in [1, 2] else "Prev-B Manutenção "
+    suf = f". ({L[1]})"
+    return f"{pre}{str(L[0])[:40 - len(pre) - len(suf)].strip()}{suf}"
+
+
+def limpar_nome_planilha(nome):
+    """Limpa o nome da planilha retirando parênteses e pontos."""
+    nome = re.sub(r'\(.*?\)', '', str(nome))
+    nome = nome.replace('.', ' ')
+    return remover_acentos(nome).strip()
+
+
+def ler_intervalo_notas(caminho_excel):
+    # 1. Verificação do JSON
+    nome_json = "planos_manutencao_duplo222.json"
+    caminho_json = os.path.join(os.path.dirname(__file__), nome_json)
+
+    if not os.path.exists(caminho_json):
+        print(f"❌ ERRO: Arquivo '{nome_json}' não encontrado!")
+        return []
+
+    with open(caminho_json, 'r', encoding='utf-8') as f:
+        banco_pdf_json = json.load(f)
+
+    # 2. Abre a Planilha
+    wb = openpyxl.load_workbook(caminho_excel, data_only=True)
+    ws = wb.active
+
+    # --- VARIÁVEIS PRINCIPAIS (FORA DO LOOP) ---
+    titulo_principal_a2 = str(ws["A2"].value).strip().upper() if ws["A2"].value else "SEM TÍTULO"
+    conteudo_f2 = str(ws["F2"].value).strip().upper()  # Forçamos maiúsculo aqui
+    cod_oficina = "56" if "OFICINA DE POÇOS" in conteudo_f2 else "050"
+
+    print(f"📌 Título (A2): {titulo_principal_a2}")
+    print(f"🏢 Oficina (F2): {conteudo_f2.upper()} (Cód: {cod_oficina})")
+    print("-" * 50)
+
+    # Mapear mescladas
+    m = {}
+    if ws.merged_cells:
+        for rng in ws.merged_cells.ranges:
+            c1, r1, c2, r2 = rng.bounds
+            val = ws.cell(r1, c1).value
+            for r in range(r1, r2 + 1):
+                for c in range(c1, c2 + 1): m[(r, c)] = val
+
+    lista_final = []
+
+    # 3. Loop nas linhas (Linha 5 em diante)
+    for row in ws.iter_rows(min_row=5, max_row=ws.max_row, min_col=1, max_col=7):
+        L = [m.get((c.row, c.column), c.value) for c in row]
+
+        if L[1]:  # Se tiver Código ET
+            val_sap_bruto = str(L[2]).strip().upper() if L[2] else ""
+            cod_sap_final = "" if val_sap_bruto == "SN" else val_sap_bruto
+
+            # --- BUSCA NO JSON ---
+            nome_limpo = limpar_nome_planilha(L[0])
+            primeira_palavra = nome_limpo.split()[0] if nome_limpo else ""
+
+            texto_encontrado = "⚠️ TEXTO NÃO LOCALIZADO NO JSON"
+
+            for item in banco_pdf_json:
+                nome_json = remover_acentos(item["equipamento"])
+
+                # Regra: Se a planilha diz SN, o item do JSON TEM que ter "SN - "
+                is_sn_planilha = (val_sap_bruto == "SN")
+                is_sn_json = ("SN - " in item["equipamento"])
+
+                if is_sn_planilha == is_sn_json:
+                    # Se a primeira palavra (ex: JAR) bater, traz o texto
+                    if primeira_palavra in nome_json:
+                        texto_encontrado = item["texto_extraido"]
+                        break
+
+            dados_linha = {
+                "titulo_geral": titulo_principal_a2,
+                "frase_titulo_nota": formatar_frase(L),
+                "cod_sap": cod_sap_final,
+                "numero_nota": L[6],
+                "cod_oficina": cod_oficina,
+                "texto_json": texto_encontrado
+            }
+            lista_final.append(dados_linha)
+
+    return lista_final
+
+
+# --- EXECUÇÃO ---
+caminho = r"C:\Users\DLXW\PETROBRAS\Tarcisio de Oliveira Carvalho - PrestServ - Notas pescaria\NOTAS MANUTENÇÃO\03-26\NOTAS DE MANUTENÇÃO 17-03.xlsm"
+minha_lista = ler_intervalo_notas(caminho)
+
+# Loop de Controle e Print do Texto
+for reg in minha_lista:
+    print(f"\n[{reg['titulo_geral']}]")
+    print(f"NOTA: {reg['numero_nota']} | TÍTULO: {reg['frase_titulo_nota']}")
+    print(f"SAP: '{reg['cod_sap']}' | OFICINA: {reg['cod_oficina']}")
+    print(f"CONTEÚDO EXTRAÍDO:\n{reg['texto_json']}...")  # Printa os primeiros 400 caracteres
+    print("-" * 90)

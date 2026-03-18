@@ -1,0 +1,106 @@
+import win32com.client
+import sys
+import time
+import pyperclip
+import numpy as np
+from datetime import date
+
+hoje = date.today()
+data_hoje_formatada = hoje.strftime("%d.%m.%Y")
+
+# Soma 5 dias úteis (weekmask '1111100' = seg–sex)
+alvo_np = np.busday_offset(np.datetime64(hoje, 'D'), 5, weekmask='1111100')
+
+# Converte para date e formata
+alvo_py = date.fromisoformat(np.datetime_as_string(alvo_np))
+data_mais_5_uteis_formatada = alvo_py.strftime("%d.%m.%Y")
+
+print("Hoje:", data_hoje_formatada)
+print("Hoje + 5 dias úteis:", data_mais_5_uteis_formatada)
+
+selecao_oficina = input("deseja fazer nota para qual oficina:\n\n1 - oficina de poços Claudio.\n\n2 - matalurgica usinagem pintura mecanica geral.\n\n digite o numero da oficina desejada: ")
+
+if selecao_oficina == "1":
+    print("oficina de claudio selecionada:")
+    selecao_oficina = "56"
+elif selecao_oficina == "2":
+    print("matalurgica usinagem pintura mecanica geral selecionada:")
+    selecao_oficina = "050"
+else:
+    print("oficina selecionada invalida")
+
+def conectar_sap():
+    """Estabelece a conexão com a sessão ativa do SAP."""
+    try:
+        sap_gui = win32com.client.GetObject("SAPGUI")
+        application = sap_gui.GetScriptingEngine
+        connection = application.Children(0)
+        return connection.Children(0)
+    except Exception as e:
+        print(f"❌ Erro ao conectar ao SAP: {e}")
+        sys.exit()
+
+
+def processar_nota(session, nota):
+    """Executa o fluxo completo para uma nota."""
+
+    # --- ETAPA 1: Tela Inicial ---
+    session.findById("wnd[0]").resizeWorkingPane(126, 38, False)
+    session.findById("wnd[0]/usr/ctxtRIWO00-QMART").text = "zs"
+    session.findById("wnd[0]/usr/ctxtRIWO00-QWRNUM").text = nota
+    session.findById("wnd[0]").sendVKey(0)  # Enter
+
+    # --- ETAPA 2: Preenchimento de Dados ---
+    # Ignora pop-ups de aviso iniciais
+    try:
+        session.findById("wnd[1]/tbar[0]/btn[0]").press()
+        session.findById("wnd[1]/tbar[0]/btn[0]").press()
+    except:
+
+        pass
+
+    # Aba 01
+    #essa etapa e para quando pegarmos os dados direto do excel
+    """session.findById(
+        r"wnd[0]/usr/subSCREEN_1:SAPLIQS0:1050/subNOTIF_TYPE:SAPLIQS0:1051/txtVIQMEL-QMTXT").text = "STRING 6.1/8'' (SM-015)DIGITA AQUI"
+    session.findById(r"wnd[0]/usr/subSCREEN_1:SAPLIQS0:1050/subNOTIF_TYPE:SAPLIQS0:1051/txtVIQMEL-QMTXT").caretPosition = 34
+    session.findById(r"wnd[0]").sendVKey(0)"""
+    session.findById(
+        r"wnd[0]/usr/tabsTAB_GROUP_10/tabp10\TAB01/ssubSUB_GROUP_10:SAPLIQS0:7235/subCUSTOM_SCREEN:SAPLIQS0:7212/subSUBSCREEN_2:SAPLIQS0:7326/ctxtVIQMEL-QMNAM").text = "MARCELO"
+    session.findById(
+        r"wnd[0]/usr/tabsTAB_GROUP_10/tabp10\TAB01/ssubSUB_GROUP_10:SAPLIQS0:7235/subCUSTOM_SCREEN:SAPLIQS0:7212/subSUBSCREEN_2:SAPLIQS0:7326/ctxtVIQMEL-QMDAT").text = f"{data_hoje_formatada}"
+    session.findById(
+        r"wnd[0]/usr/tabsTAB_GROUP_10/tabp10\TAB01/ssubSUB_GROUP_10:SAPLIQS0:7235/subCUSTOM_SCREEN:SAPLIQS0:7212/subSUBSCREEN_3:SAPLIQS0:7330/ctxtVIQMEL-STRMN").text = f"{data_hoje_formatada}"
+    session.findById(
+        r"wnd[0]/usr/tabsTAB_GROUP_10/tabp10\TAB01/ssubSUB_GROUP_10:SAPLIQS0:7235/subCUSTOM_SCREEN:SAPLIQS0:7212/subSUBSCREEN_3:SAPLIQS0:7330/ctxtVIQMEL-LTRMN").text = f"{data_mais_5_uteis_formatada}"
+    session.findById("wnd[0]").sendVKey(0)
+
+    # Aba 02
+    session.findById(r"wnd[0]/usr/tabsTAB_GROUP_10/tabp10\TAB02").select()
+    session.findById(
+        r"wnd[0]/usr/tabsTAB_GROUP_10/tabp10\TAB02/ssubSUB_GROUP_10:SAPLIQS0:7235/subCUSTOM_SCREEN:SAPLIQS0:7212/subSUBSCREEN_1:SAPLIQS0:7790/subUSER0001:SAPLXQQM:0102/ctxtZAQMEL-YYTIPO_INTERV").text = "2"
+    session.findById("wnd[0]").sendVKey(0)
+
+    # Finalização Aba 01
+    session.findById(r"wnd[0]/usr/tabsTAB_GROUP_10/tabp10\TAB01").select()
+    session.findById(
+        r"wnd[0]/usr/tabsTAB_GROUP_10/tabp10\TAB01/ssubSUB_GROUP_10:SAPLIQS0:7235/subCUSTOM_SCREEN:SAPLIQS0:7212/subSUBSCREEN_2:SAPLIQS0:7326/ctxtVIQMEL-INGRP").text = f"{selecao_oficina}"
+    session.findById(
+        r"wnd[0]/usr/tabsTAB_GROUP_10/tabp10\TAB01/ssubSUB_GROUP_10:SAPLIQS0:7235/subCUSTOM_SCREEN:SAPLIQS0:7212/subSUBSCREEN_2:SAPLIQS0:7326/ctxtVIQMEL-IWERK").text = "2700"
+    session.findById(r"wnd[0]/tbar[1]/btn[13]").press()  # Salvar
+
+    print(f"✅ Nota {nota} processada com sucesso.")
+
+
+if __name__ == "__main__":
+    # Conecta uma vez
+    session = conectar_sap()
+
+    # Lista de notas para o seu loop
+    conteudo = pyperclip.paste()
+    print(f"O que está no clipboard: {conteudo}")
+    lista_de_notas = [f"{conteudo}"]
+
+    for nota in lista_de_notas:
+        processar_nota(session, nota)
+        time.sleep(1)  # Pequena pausa entre notas para o SAP estabilizar

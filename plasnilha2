@@ -1,0 +1,83 @@
+import openpyxl
+import json
+import os
+import re
+import unicodedata
+import win32com.client
+from datetime import date, timedelta
+
+# --- 1. CONFIGURAÇÕES DE DATA E EMISSOR ---
+hoje = date.today()
+data_hoje = hoje.strftime("%d.%m.%Y")
+
+dias, alvo = 0, hoje
+while dias < 5:
+    alvo += timedelta(days=1)
+    if alvo.weekday() < 5: dias += 1
+data_alvo = alvo.strftime("%d.%m.%Y")
+
+# --- 2. CARGA DO BANCO DE DADOS (JSON) ---
+caminho_json = os.path.join(os.path.dirname(__file__), "planos_manutencao_duplo.json")
+if not os.path.exists(caminho_json):
+    print("❌ Arquivo JSON não encontrado!"); exit()
+
+with open(caminho_json, 'r', encoding='utf-8') as f:
+    banco_json = json.load(f)
+
+# --- 3. LEITURA DA PLANILHA EXCEL ---
+caminho_excel = r"C:\Users\DLXW\PETROBRAS\Tarcisio de Oliveira Carvalho - PrestServ - Notas pescaria\NOTAS MANUTENÇÃO\03-26\NOTAS DE MANUTENÇÃO 17-03.xlsm"
+wb = openpyxl.load_workbook(caminho_excel, data_only=True)
+ws = wb.active
+
+conteudo_f2 = str(ws["F2"].value).strip().upper()
+selecao_oficina = "56" if "OFICINA DE POÇOS" in conteudo_f2 else "050"
+
+m = {}
+if ws.merged_cells:
+    for rng in ws.merged_cells.ranges:
+        c1, r1, c2, r2 = rng.bounds
+        val = ws.cell(r1, c1).value
+        for r in range(r1, r2 + 1):
+            for c in range(c1, c2 + 1): m[(r, c)] = val
+
+# --- 4. PROCESSAMENTO DAS LINHAS ---
+lista_para_sap = []
+for row in ws.iter_rows(min_row=5, max_row=ws.max_row, min_col=1, max_col=7):
+    L = [m.get((c.row, c.column), c.value) for c in row]
+    if L[1]:
+        pre = "Prev-A Manutenção " if L[4] in [1, 2] else "Prev-B Manutenção "
+        suf = f". ({L[1]})"
+        titulo_nota = f"{pre}{str(L[0])[:40 - len(pre) - len(suf)].strip()}{suf}"
+        val_sap = str(L[2]).strip().upper() if L[2] else ""
+        cod_sap = "" if val_sap == "SN" else val_sap
+
+        nome_ex = re.sub(r'\(.*?\)', '', str(L[0])).replace('.', ' ').strip().upper()
+        nome_ex_limpo = "".join(c for c in unicodedata.normalize('NFD', nome_ex) if unicodedata.category(c) != 'Mn')
+        palavra_chave = nome_ex_limpo.split()[0] if nome_ex_limpo else ""
+
+        texto_pdf = "⚠️ TEXTO NÃO LOCALIZADO"
+        for item in banco_json:
+            nome_j = "".join(c for c in unicodedata.normalize('NFD', item["equipamento"].upper()) if unicodedata.category(c) != 'Mn')
+            if (val_sap == "SN") == ("SN - " in item["equipamento"]):
+                if palavra_chave and palavra_chave in nome_j:
+                    texto_pdf = item["texto_extraido"]
+                    break
+
+        lista_para_sap.append({
+            "nota": L[6],
+            "titulo_curto": titulo_nota,
+            "cod_sap": cod_sap,
+            "texto_longo": texto_pdf,
+            "oficina": selecao_oficina
+        })
+
+# --- 5. EXECUÇÃO ---
+
+# for reg in lista_para_sap:
+reg = lista_para_sap[0] # Pega o primeiro item da lista
+print("=" * 60)
+print(f"NOTA: {reg['nota']} | SAP: {reg['cod_sap']}")
+print(f"TÍTULO SAP: {reg['titulo_curto']}")
+print(f"TAMANHO DO TEXTO: {len(reg['texto_longo'])} caracteres")
+print(f"TEXTO CARREGADO:\n{reg['texto_longo']}")
+print("=" * 60)

@@ -1,0 +1,79 @@
+import win32com.client
+import sys
+import time
+import pyperclip
+from datetime import date, timedelta
+
+# --- CONFIGURAÇÕES INICIAIS ---
+emissor = "MARCELO"
+hoje = date.today()
+data_hoje = hoje.strftime("%d.%m.%Y")
+
+# Cálculo de 5 dias úteis (puro Python, sem bibliotecas pesadas)
+dias_adicionados = 0
+alvo = hoje
+while dias_adicionados < 5:
+    alvo += timedelta(days=1)
+    if alvo.weekday() < 5:  # 0 a 4 é Segunda a Sexta
+        dias_adicionados += 1
+data_alvo = alvo.strftime("%d.%m.%Y")
+
+print(f"📌 Início: {data_hoje} | Alvo: {data_alvo}")
+
+# --- SELEÇÃO DE OFICINA ---
+msg_oficina = "Qual oficina?\n1 - Claudio (56)\n2 - Metalúrgica (050)\nDigite: "
+op = input(msg_oficina)
+cod_oficina = "56" if op == "1" else "050"
+
+# --- CONEXÃO DIRETA SAP ---
+try:
+    sap_gui = win32com.client.GetObject("SAPGUI")
+    session = sap_gui.GetScriptingEngine.Children(0).Children(0)
+except:
+    print("❌ SAP não está aberto ou script desativado.")
+    sys.exit()
+
+# --- PROCESSAMENTO ---
+notas = pyperclip.paste().splitlines()  # Pega várias notas se estiverem uma por linha
+
+for nota in notas:
+    nota = nota.strip()
+    if not nota: continue
+
+    print(f"🚀 Processando nota: {nota}")
+
+    # Tela Inicial
+    session.findById("wnd[0]/usr/ctxtRIWO00-QMART").text = "zs"
+    session.findById("wnd[0]/usr/ctxtRIWO00-QWRNUM").text = nota
+    session.findById("wnd[0]").sendVKey(0)  # Enter
+
+    # Ignorar pop-ups de aviso (Clica 2x no OK se aparecer)
+    try:
+        session.findById("wnd[1]/tbar[0]/btn[0]").press()
+        session.findById("wnd[1]/tbar[0]/btn[0]").press()
+    except:
+        pass
+
+    # ABA 01 - Datas e Emissor
+    # Caminhos encurtados para o que importa
+    sub1 = r"wnd[0]/usr/tabsTAB_GROUP_10/tabp10\TAB01/ssubSUB_GROUP_10:SAPLIQS0:7235/subCUSTOM_SCREEN:SAPLIQS0:7212"
+    session.findById(f"{sub1}/subSUBSCREEN_2:SAPLIQS0:7326/ctxtVIQMEL-QMNAM").text = emissor
+    session.findById(f"{sub1}/subSUBSCREEN_2:SAPLIQS0:7326/ctxtVIQMEL-QMDAT").text = data_hoje
+    session.findById(f"{sub1}/subSUBSCREEN_3:SAPLIQS0:7330/ctxtVIQMEL-STRMN").text = data_hoje
+    session.findById(f"{sub1}/subSUBSCREEN_3:SAPLIQS0:7330/ctxtVIQMEL-LTRMN").text = data_alvo
+    session.findById("wnd[0]").sendVKey(0)
+
+    # ABA 02 - Tipo Intervenção
+    session.findById(r"wnd[0]/usr/tabsTAB_GROUP_10/tabp10\TAB02").select()
+    session.findById(
+        r"wnd[0]/usr/tabsTAB_GROUP_10/tabp10\TAB02/ssubSUB_GROUP_10:SAPLIQS0:7235/subCUSTOM_SCREEN:SAPLIQS0:7212/subSUBSCREEN_1:SAPLIQS0:7790/subUSER0001:SAPLXQQM:0102/ctxtZAQMEL-YYTIPO_INTERV").text = "2"
+    session.findById("wnd[0]").sendVKey(0)
+
+    # Finalização na ABA 01 - Oficina
+    session.findById(r"wnd[0]/usr/tabsTAB_GROUP_10/tabp10\TAB01").select()
+    session.findById(f"{sub1}/subSUBSCREEN_2:SAPLIQS0:7326/ctxtVIQMEL-INGRP").text = cod_oficina
+    session.findById(f"{sub1}/subSUBSCREEN_2:SAPLIQS0:7326/ctxtVIQMEL-IWERK").text = "2700"
+
+    session.findById(r"wnd[0]/tbar[1]/btn[13]").press()  # Botão Salvar
+    print(f"✅ Nota {nota} Finalizada.")
+    time.sleep(1)

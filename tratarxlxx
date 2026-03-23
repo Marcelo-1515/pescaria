@@ -1,0 +1,166 @@
+import openpyxl
+from collections import Counter
+
+caminho = r"C:\Users\marce\Downloads\lista de equipamentos iw29_031119_contado.xlsx"
+
+# 1. Carregar a planilha
+wb = openpyxl.load_workbook(caminho)
+ws = wb.active
+
+# 2. Primeiro, contamos as ocorrências (para preencher a coluna N antes de apagar)
+valores_m = []
+for row in range(2, ws.max_row + 1):
+    val = ws.cell(row=row, column=13).value
+    if val is not None:
+        valores_m.append(val)
+
+contagem = Counter(valores_m)
+
+# 3. Preencher a coluna N com o total original
+for row in range(2, ws.max_row + 1):
+    val = ws.cell(row=row, column=13).value
+    if val is not None:
+        ws.cell(row=row, column=14).value = contagem[val]
+
+# 4. Remover as linhas duplicadas (Mantendo apenas a PRIMEIRA aparição)
+# Usamos um set para rastrear o que já "vimos"
+vistos = set()
+# Iteramos de baixo para cima para não quebrar o índice ao deletar
+for row_idx in range(ws.max_row, 1, -1):
+    valor_atual = ws.cell(row=row_idx, column=13).value
+
+    if valor_atual in vistos:
+        # Se já vimos esse valor antes (em uma linha abaixo), apagamos esta linha
+        ws.delete_rows(row_idx)
+    else:
+        # Se é a primeira vez que vemos (olhando de baixo pra cima), guardamos no set
+        # Mas como estamos indo de baixo para cima, precisamos de uma lógica
+        # para manter a de CIMA. Vamos ajustar:
+        pass
+
+# --- Ajuste da Lógica para manter a de CIMA ---
+vistos = set()
+linhas_para_deletar = []
+
+# Primeiro passamos de cima para baixo para saber o que manter
+for row_idx in range(2, ws.max_row + 1):
+    valor = ws.cell(row=row_idx, column=13).value
+    if valor in vistos:
+        linhas_para_deletar.append(row_idx)
+    else:
+        vistos.add(valor)
+
+# Agora deletamos de baixo para cima para não bugar os índices
+for row_idx in reversed(linhas_para_deletar):
+    ws.delete_rows(row_idx)
+
+# 5. Salvar o arquivo final
+novo_arquivo = caminho.replace(".xlsx", "_limpo.xlsx")
+wb.save(novo_arquivo)
+
+print(f"Limpeza concluída! Arquivo salvo como: {novo_arquivo}")
+
+
+"""
+--------------------------------------------------------------------------------------
+
+import openpyxl
+from collections import Counter
+
+caminho = r"C:\Users\marce\Downloads\lista de equipamentos iw29_031119.xlsx"
+
+# 1. Carregar a planilha
+wb = openpyxl.load_workbook(caminho)
+ws = wb.active
+
+# 2. Primeiro, contamos as ocorrências (para preencher a coluna N antes de apagar)
+valores_m = []
+for row in range(2, ws.max_row + 1):
+    val = ws.cell(row=row, column=13).value
+    if val is not None:
+        valores_m.append(val)
+
+contagem = Counter(valores_m)
+
+# 3. Preencher a coluna N com o total original
+for row in range(2, ws.max_row + 1):
+    val = ws.cell(row=row, column=13).value
+    if val is not None:
+        ws.cell(row=row, column=14).value = contagem[val]
+
+# 4. Remover as linhas duplicadas (Mantendo apenas a PRIMEIRA aparição)
+# Usamos um set para rastrear o que já "vimos"
+vistos = set()
+# Iteramos de baixo para cima para não quebrar o índice ao deletar
+for row_idx in range(ws.max_row, 1, -1):
+    valor_atual = ws.cell(row=row_idx, column=13).value
+
+    if valor_atual in vistos:
+        # Se já vimos esse valor antes (em uma linha abaixo), apagamos esta linha
+        ws.delete_rows(row_idx)
+    else:
+        # Se é a primeira vez que vemos (olhando de baixo pra cima), guardamos no set
+        # Mas como estamos indo de baixo para cima, precisamos de uma lógica
+        # para manter a de CIMA. Vamos ajustar:
+        pass
+
+# --- Ajuste da Lógica para manter a de CIMA ---
+vistos = set()
+linhas_para_deletar = []
+
+# Primeiro passamos de cima para baixo para saber o que manter
+for row_idx in range(2, ws.max_row + 1):
+    valor = ws.cell(row=row_idx, column=13).value
+    if valor in vistos:
+        linhas_para_deletar.append(row_idx)
+    else:
+        vistos.add(valor)
+
+# Agora deletamos de baixo para cima para não bugar os índices
+for row_idx in reversed(linhas_para_deletar):
+    ws.delete_rows(row_idx)
+
+# 5. Salvar o arquivo final
+novo_arquivo = caminho.replace(".xlsx", "_limpo.xlsx")
+wb.save(novo_arquivo)
+
+print(f"Limpeza concluída! Arquivo salvo como: {novo_arquivo}")
+
+
+
+--------------------------------------------------------
+
+import openpyxl
+from collections import Counter
+
+# 1. Caminho do arquivo
+caminho = r"C:\Users\marce\Downloads\lista de equipamentos iw29_031119.xlsx"
+
+# 2. Carregar a planilha
+wb = openpyxl.load_workbook(caminho)
+ws = wb.active  # Seleciona a aba ativa
+
+# 3. Ler todos os valores da coluna M (Coluna 13)
+# Começamos da linha 2 para pular o cabeçalho, se houver
+valores_m = []
+for row in range(2, ws.max_row + 1):
+    valor = ws.cell(row=row, column=13).value
+    if valor is not None:
+        valores_m.append(valor)
+
+# 4. Contar as ocorrências usando o Counter (dicionário de frequências)
+contagem = Counter(valores_m)
+
+# 5. Escrever os resultados na coluna N (Coluna 14)
+for row in range(2, ws.max_row + 1):
+    valor_atual = ws.cell(row=row, column=13).value
+    if valor_atual is not None:
+        # Pega a contagem do valor atual no nosso dicionário
+        ws.cell(row=row, column=14).value = contagem[valor_atual]
+
+# 6. Salvar o arquivo
+novo_arquivo = caminho.replace(".xlsx", "_contado.xlsx")
+wb.save(novo_arquivo)
+
+print(f"Pronto! O resultado foi salvo em: {novo_arquivo}")
+"""
